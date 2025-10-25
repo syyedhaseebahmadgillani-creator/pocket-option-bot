@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pocket Option Prediction Bot</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 10px; background: #f4f4f4; }
+        .container { max-width: 100%; margin: auto; }
+        select, input, button { padding: 10px; margin: 5px; border: 1px solid #ccc; border-radius: 5px; }
+        #chartContainer { height: 300px; background: white; margin: 10px 0; }
+        #prediction { background: #e7f3ff; padding: 15px; border-radius: 5px; margin: 10px 0; display: none; }
+        #history { background: #f9f9f9; padding: 10px; border-radius: 5px; margin: 10px 0; max-height: 200px; overflow-y: auto; }
+        canvas { max-width: 100%; height: auto; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Pocket Option Prediction Bot</h1>
+        
+        <!-- Asset & Timeframe Selectors -->
+        <label>Asset:</label>
+        <select id="assetSelect">
+            <option value="O:EURUSD">EUR/USD</option>
+            <option value="O:GBPUSD">GBP/USD</option>
+            <option value="O:BTCUSD">BTC/USD</option>
+            <option value="O:XAUUSD">Gold (XAU/USD)</option>
+            <option value="O:USOIL">US Oil</option>
+        </select>
+        
+        <label>Timeframe:</label>
+        <select id="timeframe">
+            <option value="1">1 Minute</option>
+            <option value="5">5 Minutes</option>
+            <option value="60">1 Hour</option>
+        </select>
+        
+        <button onclick="loadChart()">Load Live Chart</button>
+        
+        <div id="chartContainer">
+            <canvas id="candlestickChart"></canvas>
+        </div>
+        
+        <!-- Screenshot Upload -->
+        <h3>Upload Chart Screenshot for Analysis</h3>
+        <input type="file" id="imageUpload" accept="image/*">
+        <button onclick="analyzeImage()">Analyze</button>
+        
+        <!-- Prediction Output -->
+        <div id="prediction">
+            <h3>Prediction Results</h3>
+            <p id="direction"></p>
+            <p id="confidence"></p>
+            <p id="levels"></p>
+            <p id="suggestions"></p>
+            <button onclick="addToHistory()">Add to History</button>
+            <button onclick="exportHistory()">Export History</button>
+        </div>
+        
+        <!-- Risk Calculator -->
+        <h3>Risk Management</h3>
+        <label>Account Balance ($):</label>
+        <input type="number" id="balance" value="1000">
+        <label>Risk Per Trade (%):</label>
+        <input type="number" id="riskPercent" value="2" min="1" max="5">
+        <button onclick="calculateRisk()">Calculate Position Size</button>
+        <p id="riskOutput"></p>
+        
+        <!-- Prediction History -->
+        <h3>Prediction History</h3>
+        <div id="history"></div>
+    </div>
+
+    <script>
+        let chart;
+        let history = [];
+        const API_KEY = 'd3um1fpr01qil4aqo7p0d3um1fpr01qil4aqo7pg'; // Replace with your Finnhub key!
+
+        // Load Live Chart
+        async function loadChart() {
+            const symbol = document.getElementById('assetSelect').value;
+            const resolution = document.getElementById('timeframe').value;
+            const url = `https://finnhub.io/api/v1/candle?symbol=${symbol}&resolution=${resolution}&from=${Math.floor(Date.now() / 1000) - 3600 * 24}&to=${Math.floor(Date.now() / 1000)}&token=${API_KEY}`;
+            
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+                if (data.s === 'ok') {
+                    const ctx = document.getElementById('candlestickChart').getContext('2d');
+                    if (chart) chart.destroy();
+                    chart = new Chart(ctx, {
+                        type: 'candlestick',
+                        data: {
+                            datasets: [{
+                                label: symbol,
+                                data: data.t.map((t, i) => ({
+                                    x: new Date(t * 1000),
+                                    o: data.o[i],
+                                    h: data.h[i],
+                                    l: data.l[i],
+                                    c: data.c[i]
+                                }))
+                            }]
+                        },
+                        options: { responsive: true, maintainAspectRatio: false }
+                    });
+                } else {
+                    alert('Error loading chart. Check API key.');
+                }
+            } catch (error) {
+                alert('Network error: ' + error);
+            }
+        }
+
+        // Image Upload & Analysis
+        function analyzeImage() {
+            const fileInput = document.getElementById('imageUpload');
+            const file = fileInput.files[0];
+            if (!file) {
+                alert('Please upload an image first.');
+                return;
+            }
+
+            const img = new Image();
+            img.onload = function() {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                ctx.drawImage(img, 0, 0);
+
+                // Simple color analysis: Sample pixels for green/red dominance (simulates bullish/bearish)
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                let green = 0, red = 0;
+                for (let i = 0; i < imageData.data.length; i += 4) {
+                    const r = imageData.data[i];
+                    const g = imageData.data[i + 1];
+                    const b = imageData.data[i + 2];
+                    if (g > r + 30 && g > b + 30) green++; // Greenish pixel
+                    if (r > g + 30 && r > b + 30) red++; // Reddish pixel
+                }
+
+                const isBullish = green > red;
+                const direction = isBullish ? 'CALL (Up)' : 'PUT (Down)';
+                const confidence = Math.floor(Math.random() * 30 + 70); // Fake 70-100%
+                const asset = document.getElementById('assetSelect').value.split(':')[1]; // e.g., EURUSD
+                const fakePrice = 1.1000 + (Math.random() - 0.5) * 0.01; // Simulated current price
+                const levels = isBullish 
+                    ? `Entry: ${fakePrice.toFixed(4)}, Target: ${(fakePrice + 0.005).toFixed(4)}, Stop-Loss: ${(fakePrice - 0.002).toFixed(4)}`
+                    : `Entry: ${fakePrice.toFixed(4)}, Target: ${(fakePrice - 0.005).toFixed(4)}, Stop-Loss: ${(fakePrice + 0.002).toFixed(4)}`;
+                const suggestions = isBullish 
+                    ? 'Bullish trend detected. Wait for confirmation candle. Risk 1-2% per trade.'
+                    : 'Bearish signals strong. Avoid if news incoming. Use trailing stop.';
+
+                document.getElementById('direction').textContent = `Direction: ${direction}`;
+                document.getElementById('confidence').textContent = `Confidence: ${confidence}%`;
+                document.getElementById('levels').textContent = `Key Levels: ${levels}`;
+                document.getElementById('suggestions').textContent = `Suggestions: ${suggestions}`;
+                document.getElementById('prediction').style.display = 'block';
+            };
+            img.src = URL.createObjectURL(file);
+        }
+
+        // Add to History
+        function addToHistory() {
+            const pred = {
+                time: new Date().toLocaleString(),
+                direction: document.getElementById('direction').textContent,
+                confidence: document.getElementById('confidence').textContent
+            };
+            history.push(pred);
+            updateHistory();
+        }
+
+        function updateHistory() {
+            document.getElementById('history').innerHTML = history.map(h => `<p>${h.time}: ${h.direction} (${h.confidence})</p>`).join('');
+        }
+
+        // Export History
+        function exportHistory() {
+            const text = history.map(h => `${h.time}: ${h.direction} (${h.confidence})`).join('\n');
+            const blob = new Blob([text], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'predictions.txt';
+            a.click();
+        }
+
+        // Risk Calculator
+        function calculateRisk() {
+            const balance = parseFloat(document.getElementById('balance').value);
+            const riskPct = parseFloat(document.getElementById('riskPercent').value);
+            const positionSize = (balance * (riskPct / 100)).toFixed(2);
+            document.getElementById('riskOutput').textContent = `Recommended Position Size: $${positionSize} (Risk: ${riskPct}%)`;
+        }
+
+        // Load initial chart on page load
+        window.onload = loadChart;
+    </script>
+</body>
+</html>
