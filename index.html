@@ -76,7 +76,7 @@
     <script>
         let chart;
         let history = [];
-        const API_KEY = 'd3um1fpr01qil4aqo7p0d3um1fpr01qil4aqo7pg'; // Replace with your Finnhub key!
+        const API_KEY = 'd3um1fpr01qil4aqo7p0'; // Your Finnhub API key
 
         // Load Live Chart
         async function loadChart() {
@@ -86,6 +86,7 @@
             
             try {
                 const response = await fetch(url);
+                if (!response.ok) throw new Error('API request failed');
                 const data = await response.json();
                 if (data.s === 'ok') {
                     const ctx = document.getElementById('candlestickChart').getContext('2d');
@@ -107,10 +108,10 @@
                         options: { responsive: true, maintainAspectRatio: false }
                     });
                 } else {
-                    alert('Error loading chart. Check API key.');
+                    alert('Error: Invalid data from API. Check symbol or try again.');
                 }
             } catch (error) {
-                alert('Network error: ' + error);
+                alert('Network error or invalid API key: ' + error.message + '. Please check your internet and API key, then try again.');
             }
         }
 
@@ -131,22 +132,21 @@
                 canvas.height = img.height;
                 ctx.drawImage(img, 0, 0);
 
-                // Simple color analysis: Sample pixels for green/red dominance (simulates bullish/bearish)
                 const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
                 let green = 0, red = 0;
                 for (let i = 0; i < imageData.data.length; i += 4) {
                     const r = imageData.data[i];
                     const g = imageData.data[i + 1];
                     const b = imageData.data[i + 2];
-                    if (g > r + 30 && g > b + 30) green++; // Greenish pixel
-                    if (r > g + 30 && r > b + 30) red++; // Reddish pixel
+                    if (g > r + 30 && g > b + 30) green++;
+                    if (r > g + 30 && r > b + 30) red++;
                 }
 
                 const isBullish = green > red;
                 const direction = isBullish ? 'CALL (Up)' : 'PUT (Down)';
-                const confidence = Math.floor(Math.random() * 30 + 70); // Fake 70-100%
-                const asset = document.getElementById('assetSelect').value.split(':')[1]; // e.g., EURUSD
-                const fakePrice = 1.1000 + (Math.random() - 0.5) * 0.01; // Simulated current price
+                const confidence = Math.floor(Math.random() * 30 + 70);
+                const asset = document.getElementById('assetSelect').value.split(':')[1];
+                const fakePrice = 1.1000 + (Math.random() - 0.5) * 0.01;
                 const levels = isBullish 
                     ? `Entry: ${fakePrice.toFixed(4)}, Target: ${(fakePrice + 0.005).toFixed(4)}, Stop-Loss: ${(fakePrice - 0.002).toFixed(4)}`
                     : `Entry: ${fakePrice.toFixed(4)}, Target: ${(fakePrice - 0.005).toFixed(4)}, Stop-Loss: ${(fakePrice + 0.002).toFixed(4)}`;
@@ -196,9 +196,6 @@
             const positionSize = (balance * (riskPct / 100)).toFixed(2);
             document.getElementById('riskOutput').textContent = `Recommended Position Size: $${positionSize} (Risk: ${riskPct}%)`;
         }
-
-        // Load initial chart on page load
-        window.onload = loadChart;
     </script>
 </body>
 </html>
