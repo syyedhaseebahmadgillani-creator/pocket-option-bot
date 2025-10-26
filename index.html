@@ -59,13 +59,13 @@
     </div>
     <script>
         let chart, history = [];
-        const API_KEY = 'd3um1fpr01qil4aqo7p0d3um1fpr01qil4aqo7pg'; // Confirmed correct API key
+        const API_KEY = 'd3umtv1r01qil4aqrn9gd3umtv1r01qil4aqrna0'; // Confirmed correct API key
 
         async function loadChart() {
             const symbol = document.getElementById('assetSelect').value;
             const resolution = document.getElementById('timeframe').value;
             const now = Math.floor(Date.now() / 1000); // UTC timestamp
-            const from = now - 86400; // 24 hours ago
+            const from = now - 3600; // 1 hour ago (shorter window to test recent data)
             const to = now;
             const url = `https://finnhub.io/api/v1/candle?symbol=${symbol}&resolution=${resolution}&from=${from}&to=${to}&token=${API_KEY}`;
 
@@ -73,15 +73,15 @@
                 try {
                     const response = await fetch(url);
                     const text = await response.text();
-                    console.log(`Attempt ${attempt} - Raw Response:`, text);
+                    console.log(`Attempt ${attempt} - Raw Response:`, text.substring(0, 200)); // Log first 200 chars for brevity
                     const data = JSON.parse(text);
                     if (!response.ok) {
-                        if (response.status === 429 || response.status === 503) {
-                            if (attempt === 3) throw new Error(`HTTP ${response.status}: ${text}`);
-                            await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds before retry
+                        if ([429, 503].includes(response.status)) {
+                            if (attempt === 3) throw new Error(`HTTP ${response.status}: ${text.substring(0, 100)}`);
+                            await new Promise(resolve => setTimeout(resolve, 2000)); // 2-second delay
                             continue;
                         }
-                        throw new Error(`HTTP ${response.status}: ${text}`);
+                        throw new Error(`HTTP ${response.status}: ${text.substring(0, 100)}`);
                     }
                     if (data.s === 'ok') {
                         const ctx = document.getElementById('candlestickChart').getContext('2d');
@@ -91,14 +91,15 @@
                             data: { datasets: [{ label: symbol, data: data.t.map((t, i) => ({ x: new Date(t * 1000), o: data.o[i], h: data.h[i], l: data.l[i], c: data.c[i] })) }] },
                             options: { responsive: true, maintainAspectRatio: false }
                         });
-                        return; // Success, exit loop
+                        return;
                     } else {
                         alert(`Error: ${data.s || 'Unknown'} - ${JSON.stringify(data)}`);
                         return;
                     }
                 } catch (error) {
+                    console.error(`Attempt ${attempt} failed:`, error);
                     if (attempt === 3) alert(`Failed after 3 attempts: ${error.message}. Check console for details.`);
-                    else await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds before next retry
+                    else await new Promise(resolve => setTimeout(resolve, 2000));
                 }
             }
         }
@@ -121,7 +122,6 @@
                 const isBullish = green > red;
                 const direction = isBullish ? 'CALL (Up)' : 'PUT (Down)';
                 const confidence = Math.floor(Math.random() * 30 + 70);
-                const asset = document.getElementById('assetSelect').value;
                 const price = 1.1000 + (Math.random() - 0.5) * 0.01;
                 const levels = isBullish ? `Entry: ${price.toFixed(4)}, Target: ${(price + 0.005).toFixed(4)}, Stop: ${(price - 0.002).toFixed(4)}` : `Entry: ${price.toFixed(4)}, Target: ${(price - 0.005).toFixed(4)}, Stop: ${(price + 0.002).toFixed(4)}`;
                 const suggestions = isBullish ? 'Bullish trend. Wait for candle. Risk 1-2%' : 'Bearish. Avoid news. Use stop.';
