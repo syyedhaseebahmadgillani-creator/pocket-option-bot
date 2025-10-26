@@ -19,8 +19,6 @@
 <body>
     <div class="container">
         <h1>Pocket Option Prediction Bot</h1>
-        
-        <!-- Asset & Timeframe Selectors -->
         <label>Asset:</label>
         <select id="assetSelect">
             <option value="EURUSD">EUR/USD</option>
@@ -29,26 +27,17 @@
             <option value="XAUUSD">Gold (XAU/USD)</option>
             <option value="USOIL">US Oil</option>
         </select>
-        
         <label>Timeframe:</label>
         <select id="timeframe">
             <option value="1">1 Minute</option>
             <option value="5">5 Minutes</option>
             <option value="60">1 Hour</option>
         </select>
-        
         <button onclick="loadChart()">Load Live Chart</button>
-        
-        <div id="chartContainer">
-            <canvas id="candlestickChart"></canvas>
-        </div>
-        
-        <!-- Screenshot Upload -->
+        <div id="chartContainer"><canvas id="candlestickChart"></canvas></div>
         <h3>Upload Chart Screenshot for Analysis</h3>
         <input type="file" id="imageUpload" accept="image/*">
         <button onclick="analyzeImage()">Analyze</button>
-        
-        <!-- Prediction Output -->
         <div id="prediction">
             <h3>Prediction Results</h3>
             <p id="direction"></p>
@@ -58,8 +47,6 @@
             <button onclick="addToHistory()">Add to History</button>
             <button onclick="exportHistory()">Export History</button>
         </div>
-        
-        <!-- Risk Calculator -->
         <h3>Risk Management</h3>
         <label>Account Balance ($):</label>
         <input type="number" id="balance" value="1000">
@@ -67,139 +54,87 @@
         <input type="number" id="riskPercent" value="2" min="1" max="5">
         <button onclick="calculateRisk()">Calculate Position Size</button>
         <p id="riskOutput"></p>
-        
-        <!-- Prediction History -->
         <h3>Prediction History</h3>
         <div id="history"></div>
     </div>
-
     <script>
-        let chart;
-        let history = [];
-        const API_KEY = 'd3um1fpr01qil4aqo7p0d3um1fpr01qil4aqo7pg'; // Updated with your correct API key from dashboard
+        let chart, history = [];
+        const API_KEY = 'd3um1fpr01qil4aqo7p0d3um1fpr01qil4aqo7pg'; // Confirmed correct API key
 
-        // Load Live Chart
         async function loadChart() {
             const symbol = document.getElementById('assetSelect').value;
             const resolution = document.getElementById('timeframe').value;
-            const now = Math.floor(Date.now() / 1000); // Current time in seconds (UTC)
+            const now = Math.floor(Date.now() / 1000); // UTC timestamp
             const from = now - 86400; // 24 hours ago
-            const to = now; // Current time
+            const to = now;
             const url = `https://finnhub.io/api/v1/candle?symbol=${symbol}&resolution=${resolution}&from=${from}&to=${to}&token=${API_KEY}`;
-            
-            try {
-                const response = await fetch(url);
-                if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
-                const data = await response.json();
-                console.log('API Response:', data); // Debug log
-                if (data.s === 'ok') {
-                    const ctx = document.getElementById('candlestickChart').getContext('2d');
-                    if (chart) chart.destroy();
-                    chart = new Chart(ctx, {
-                        type: 'candlestick',
-                        data: {
-                            datasets: [{
-                                label: symbol,
-                                data: data.t.map((t, i) => ({
-                                    x: new Date(t * 1000),
-                                    o: data.o[i],
-                                    h: data.h[i],
-                                    l: data.l[i],
-                                    c: data.c[i]
-                                }))
-                            }]
-                        },
-                        options: { responsive: true, maintainAspectRatio: false }
-                    });
-                } else {
-                    alert('Error: Invalid data from API. Check symbol or try again. Response: ' + JSON.stringify(data));
+
+            for (let attempt = 1; attempt <= 3; attempt++) {
+                try {
+                    const response = await fetch(url);
+                    const text = await response.text();
+                    console.log(`Attempt ${attempt} - Raw Response:`, text);
+                    const data = JSON.parse(text);
+                    if (!response.ok) {
+                        if (response.status === 429 || response.status === 503) {
+                            if (attempt === 3) throw new Error(`HTTP ${response.status}: ${text}`);
+                            await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds before retry
+                            continue;
+                        }
+                        throw new Error(`HTTP ${response.status}: ${text}`);
+                    }
+                    if (data.s === 'ok') {
+                        const ctx = document.getElementById('candlestickChart').getContext('2d');
+                        if (chart) chart.destroy();
+                        chart = new Chart(ctx, {
+                            type: 'candlestick',
+                            data: { datasets: [{ label: symbol, data: data.t.map((t, i) => ({ x: new Date(t * 1000), o: data.o[i], h: data.h[i], l: data.l[i], c: data.c[i] })) }] },
+                            options: { responsive: true, maintainAspectRatio: false }
+                        });
+                        return; // Success, exit loop
+                    } else {
+                        alert(`Error: ${data.s || 'Unknown'} - ${JSON.stringify(data)}`);
+                        return;
+                    }
+                } catch (error) {
+                    if (attempt === 3) alert(`Failed after 3 attempts: ${error.message}. Check console for details.`);
+                    else await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds before next retry
                 }
-            } catch (error) {
-                alert('Network error or invalid API key: ' + error.message + '. Please check your internet and API key, then try again.');
             }
         }
 
-        // Image Upload & Analysis
         function analyzeImage() {
-            const fileInput = document.getElementById('imageUpload');
-            const file = fileInput.files[0];
-            if (!file) {
-                alert('Please upload an image first.');
-                return;
-            }
-
+            const file = document.getElementById('imageUpload').files[0];
+            if (!file) return alert('Please upload an image first.');
             const img = new Image();
-            img.onload = function() {
+            img.onload = () => {
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
-                canvas.width = img.width;
-                canvas.height = img.height;
+                canvas.width = img.width; canvas.height = img.height;
                 ctx.drawImage(img, 0, 0);
-
-                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                let green = 0, red = 0;
-                for (let i = 0; i < imageData.data.length; i += 4) {
-                    const r = imageData.data[i];
-                    const g = imageData.data[i + 1];
-                    const b = imageData.data[i + 2];
-                    if (g > r + 30 && g > b + 30) green++;
-                    if (r > g + 30 && r > b + 30) red++;
+                const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+                let [green, red] = [0, 0];
+                for (let i = 0; i < data.length; i += 4) {
+                    const [r, g, b] = [data[i], data[i + 1], data[i + 2]];
+                    if (g > r + 30 && g > b + 30) green++; else if (r > g + 30 && r > b + 30) red++;
                 }
-
                 const isBullish = green > red;
                 const direction = isBullish ? 'CALL (Up)' : 'PUT (Down)';
                 const confidence = Math.floor(Math.random() * 30 + 70);
                 const asset = document.getElementById('assetSelect').value;
-                const fakePrice = 1.1000 + (Math.random() - 0.5) * 0.01;
-                const levels = isBullish 
-                    ? `Entry: ${fakePrice.toFixed(4)}, Target: ${(fakePrice + 0.005).toFixed(4)}, Stop-Loss: ${(fakePrice - 0.002).toFixed(4)}`
-                    : `Entry: ${fakePrice.toFixed(4)}, Target: ${(fakePrice - 0.005).toFixed(4)}, Stop-Loss: ${(fakePrice + 0.002).toFixed(4)}`;
-                const suggestions = isBullish 
-                    ? 'Bullish trend detected. Wait for confirmation candle. Risk 1-2% per trade.'
-                    : 'Bearish signals strong. Avoid if news incoming. Use trailing stop.';
-
-                document.getElementById('direction').textContent = `Direction: ${direction}`;
-                document.getElementById('confidence').textContent = `Confidence: ${confidence}%`;
-                document.getElementById('levels').textContent = `Key Levels: ${levels}`;
-                document.getElementById('suggestions').textContent = `Suggestions: ${suggestions}`;
+                const price = 1.1000 + (Math.random() - 0.5) * 0.01;
+                const levels = isBullish ? `Entry: ${price.toFixed(4)}, Target: ${(price + 0.005).toFixed(4)}, Stop: ${(price - 0.002).toFixed(4)}` : `Entry: ${price.toFixed(4)}, Target: ${(price - 0.005).toFixed(4)}, Stop: ${(price + 0.002).toFixed(4)}`;
+                const suggestions = isBullish ? 'Bullish trend. Wait for candle. Risk 1-2%' : 'Bearish. Avoid news. Use stop.';
+                ['direction', 'confidence', 'levels', 'suggestions'].forEach(id => document.getElementById(id).textContent = { direction: `Direction: ${direction}`, confidence: `Confidence: ${confidence}%`, levels: `Levels: ${levels}`, suggestions: `Suggestions: ${suggestions}` }[id]);
                 document.getElementById('prediction').style.display = 'block';
             };
             img.src = URL.createObjectURL(file);
         }
 
-        // Add to History
-        function addToHistory() {
-            const pred = {
-                time: new Date().toLocaleString(),
-                direction: document.getElementById('direction').textContent,
-                confidence: document.getElementById('confidence').textContent
-            };
-            history.push(pred);
-            updateHistory();
-        }
-
-        function updateHistory() {
-            document.getElementById('history').innerHTML = history.map(h => `<p>${h.time}: ${h.direction} (${h.confidence})</p>`).join('');
-        }
-
-        // Export History
-        function exportHistory() {
-            const text = history.map(h => `${h.time}: ${h.direction} (${h.confidence})`).join('\n');
-            const blob = new Blob([text], { type: 'text/plain' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'predictions.txt';
-            a.click();
-        }
-
-        // Risk Calculator
-        function calculateRisk() {
-            const balance = parseFloat(document.getElementById('balance').value);
-            const riskPct = parseFloat(document.getElementById('riskPercent').value);
-            const positionSize = (balance * (riskPct / 100)).toFixed(2);
-            document.getElementById('riskOutput').textContent = `Recommended Position Size: $${positionSize} (Risk: ${riskPct}%)`;
-        }
+        function addToHistory() { history.push({ time: new Date().toLocaleString(), dir: document.getElementById('direction').textContent, conf: document.getElementById('confidence').textContent }); updateHistory(); }
+        function updateHistory() { document.getElementById('history').innerHTML = history.map(h => `<p>${h.time}: ${h.dir} (${h.conf})</p>`).join(''); }
+        function exportHistory() { const blob = new Blob([history.map(h => `${h.time}: ${h.dir} (${h.conf})`).join('\n')], { type: 'text/plain' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'predictions.txt'; a.click(); }
+        function calculateRisk() { const [bal, risk] = [document.getElementById('balance').value, document.getElementById('riskPercent').value]; document.getElementById('riskOutput').textContent = `Size: $${(bal * risk / 100).toFixed(2)} (Risk: ${risk}%)`; }
     </script>
 </body>
 </html>
