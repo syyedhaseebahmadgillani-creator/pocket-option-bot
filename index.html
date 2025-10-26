@@ -21,17 +21,17 @@
         <h1>Pocket Option Prediction Bot</h1>
         <label>Asset:</label>
         <select id="assetSelect">
-            <option value="EURUSD">EUR/USD</option>
-            <option value="GBPUSD">GBP/USD</option>
-            <option value="BTCUSD">BTC/USD</option>
-            <option value="XAUUSD">Gold (XAU/USD)</option>
-            <option value="USOIL">US Oil</option>
+            <option value="EUR/USD">EUR/USD</option>
+            <option value="GBP/USD">GBP/USD</option>
+            <option value="BTC/USD">BTC/USD</option>
+            <option value="XAU/USD">Gold (XAU/USD)</option>
+            <option value="WTI/USD">US Oil</option>
         </select>
         <label>Timeframe:</label>
         <select id="timeframe">
-            <option value="1">1 Minute</option>
-            <option value="5">5 Minutes</option>
-            <option value="60">1 Hour</option>
+            <option value="1min">1 Minute</option>
+            <option value="5min">5 Minutes</option>
+            <option value="60min">1 Hour</option>
         </select>
         <button onclick="loadChart()">Load Live Chart</button>
         <div id="chartContainer"><canvas id="candlestickChart"></canvas></div>
@@ -59,45 +59,52 @@
     </div>
     <script>
         let chart, history = [];
-        const API_KEY = 'd3umtv1r01qil4aqrn9gd3umtv1r01qil4aqrna0'; // New regenerated API key
+        const API_KEY = '2OWNKD8YVIWZ46PC'; // Your Alpha Vantage API key
 
         async function loadChart() {
-            const symbol = document.getElementById('assetSelect').value;
-            const resolution = document.getElementById('timeframe').value;
-            const now = Math.floor(Date.now() / 1000); // UTC timestamp
-            const from = now - 86400; // 24 hours ago
-            const to = now;
-            const url = `https://finnhub.io/api/v1/candle?symbol=${symbol}&resolution=${resolution}&from=${from}&to=${to}&token=${API_KEY}`;
+            const asset = document.getElementById('assetSelect').value;
+            const interval = document.getElementById('timeframe').value;
+            const [fromSymbol, toSymbol] = asset.split('/');
+            const url = `https://www.alphavantage.co/query?function=FX_INTRADAY&from_symbol=${fromSymbol}&to_symbol=${toSymbol}&interval=${interval}&outputsize=compact&apikey=${API_KEY}`;
 
             for (let attempt = 1; attempt <= 3; attempt++) {
                 try {
                     const response = await fetch(url);
                     const text = await response.text();
-                    console.log(`Attempt ${attempt} - Status: ${response.status}, Response:`, text.substring(0, 200)); // Log status and first 200 chars
-                    const data = JSON.parse(text);
+                    console.log(`Attempt ${attempt} - Status: ${response.status}, Response:`, text.substring(0, 200));
                     if (!response.ok) {
                         if ([429, 503].includes(response.status)) {
                             if (attempt === 3) throw new Error(`HTTP ${response.status}: Rate limit or server issue`);
-                            await new Promise(resolve => setTimeout(resolve, 2000)); // 2-second delay
+                            await new Promise(resolve => setTimeout(resolve, 2000));
                             continue;
                         } else if (response.status === 401) {
-                            throw new Error('HTTP 401: Invalid API key. Please regenerate and update.');
+                            throw new Error('HTTP 401: Invalid API key. Check your Alpha Vantage key.');
                         }
                         throw new Error(`HTTP ${response.status}: ${text.substring(0, 100)}`);
                     }
-                    if (data.s === 'ok') {
-                        const ctx = document.getElementById('candlestickChart').getContext('2d');
-                        if (chart) chart.destroy();
-                        chart = new Chart(ctx, {
-                            type: 'candlestick',
-                            data: { datasets: [{ label: symbol, data: data.t.map((t, i) => ({ x: new Date(t * 1000), o: data.o[i], h: data.h[i], l: data.l[i], c: data.c[i] })) }] },
-                            options: { responsive: true, maintainAspectRatio: false }
-                        });
-                        return;
-                    } else {
-                        alert(`Error: ${data.s || 'No data'} - ${JSON.stringify(data)}`);
-                        return;
-                    }
+                    const data = JSON.parse(text);
+                    if (data['Error Message']) throw new Error(data['Error Message']);
+                    if (data['Note']) throw new Error(data['Note']); // Rate limit note
+                    const timeSeries = data['Time Series FX (1min)'] || data['Time Series FX (5min)'] || data['Time Series FX (60min)'];
+                    if (!timeSeries) throw new Error('No data available. Try a different asset/timeframe.');
+                    
+                    // Parse OHLC to candlestick data
+                    const candleData = Object.entries(timeSeries).map(([timestamp, values]) => ({
+                        x: new Date(timestamp),
+                        o: parseFloat(values['1. open']),
+                        h: parseFloat(values['2. high']),
+                        l: parseFloat(values['3. low']),
+                        c: parseFloat(values['4. close'])
+                    })).reverse(); // Reverse to chronological order
+
+                    const ctx = document.getElementById('candlestickChart').getContext('2d');
+                    if (chart) chart.destroy();
+                    chart = new Chart(ctx, {
+                        type: 'candlestick',
+                        data: { datasets: [{ label: asset, data: candleData }] },
+                        options: { responsive: true, maintainAspectRatio: false }
+                    });
+                    return;
                 } catch (error) {
                     console.error(`Attempt ${attempt} failed:`, error);
                     if (attempt === 3) alert(`Failed after 3 attempts: ${error.message}. Check console for details.`);
